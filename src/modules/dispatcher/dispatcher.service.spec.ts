@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { DispatcherService } from './dispatcher.service';
 import { MessagesService } from '../messages/messages.service';
 
@@ -15,6 +16,12 @@ describe('DispatcherService', () => {
             findMessagesToSend: jest.fn(),
             markAsSent: jest.fn(),
             markAsFailed: jest.fn(),
+          },
+        },
+        {
+          provide: ConfigService,
+          useValue: {
+            get: jest.fn().mockReturnValue(3000),
           },
         },
       ],
