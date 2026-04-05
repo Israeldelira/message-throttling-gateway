@@ -1,10 +1,10 @@
-import { Column, Entity, PrimaryColumn } from 'typeorm';
+import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 import { MessageStatus } from '../enums/message-status.enum';
 
 @Entity({ name: 'messages' })
 export class Message {
-  @PrimaryColumn({ type: 'varchar', length: 100 })
-  id!: string;
+  @PrimaryGeneratedColumn({ type: 'int', unsigned: true })
+  id!: number;
 
   @Column({ type: 'varchar', length: 255 })
   recipient!: string;

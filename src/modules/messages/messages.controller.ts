@@ -1,23 +1,30 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Controller, Get } from '@nestjs/common';
+import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { MessagesService } from './messages.service';
-import { Message } from './entities/message.entity';
 
+@ApiTags('messages')
 @Controller('messages')
 export class MessagesController {
   constructor(private readonly messagesService: MessagesService) {}
 
-  @Post()
-  create(@Body() message: Partial<Message>) {
-    return this.messagesService.create(message);
-  }
-
-  @Get()
-  findAll() {
-    return this.messagesService.findAll();
-  }
-
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.messagesService.findOne(id);
+  @Get('batch-process')
+  @ApiOperation({
+    summary: 'Genera e inserta 100,000 mensajes de prueba',
+    description:
+      'Automatiza la primera etapa de la prueba tecnica: crea 100,000 mensajes con status received y los inserta en la bd por lotes.',
+  })
+  @ApiOkResponse({
+    description:
+      'Resumen del proceso de insercion masiva ejecutado sobre los mensajes generados automaticamente.',
+    schema: {
+      example: {
+        total: 100000,
+        inserted: 100000,
+      },
+    },
+  })
+  batchProcess() {
+    const total = 100_000;
+    return this.messagesService.insertMessages(total);
   }
 }

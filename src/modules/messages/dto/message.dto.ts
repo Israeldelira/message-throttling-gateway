@@ -1,11 +1,8 @@
 import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
 
-export class CreateMessageDto {
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(100)
-  id!: string;
+export const MAX_MESSAGES_PER_BATCH = 100_000;
 
+export class CreateMessageDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(255)
@@ -15,4 +12,5 @@ export class CreateMessageDto {
   @IsNotEmpty()
   content!: string;
 }
+
 export class UpdateMessageDto implements Partial<CreateMessageDto> {}
