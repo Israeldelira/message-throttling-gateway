@@ -8,7 +8,14 @@ describe('MessagesController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [MessagesController],
-      providers: [MessagesService],
+      providers: [
+        {
+          provide: MessagesService,
+          useValue: {
+            insertMessages: jest.fn(),
+          },
+        },
+      ],
     }).compile();
 
     controller = module.get<MessagesController>(MessagesController);

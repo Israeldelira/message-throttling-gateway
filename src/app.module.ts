@@ -6,7 +6,9 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { appConfig } from './config/app.config';
 import { databaseConfig, getTypeOrmConfig } from './config/database.config';
+import { DispatcherModule } from './modules/dispatcher/dispatcher.module';
 import { MessagesModule } from './modules/messages/messages.module';
+import { MockProviderModule } from './modules/mock-provider/mock-provider.module';
 
 @Module({
   imports: [
@@ -19,6 +21,8 @@ import { MessagesModule } from './modules/messages/messages.module';
       useFactory: getTypeOrmConfig,
     }),
     MessagesModule,
+    DispatcherModule,
+    MockProviderModule,
   ],
   controllers: [AppController],
   providers: [AppService],

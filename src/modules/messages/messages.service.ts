@@ -63,4 +63,33 @@ export class MessagesService {
       await queryRunner.release();
     }
   }
+
+  async findMessagesToSend(limit: number) {
+    return this.messageRepository.find({
+      where: { status: MessageStatus.RECEIVED },
+      order: { id: 'ASC' },
+      take: limit,
+    });
+  }
+
+  async markAsSent(message: Message) {
+    const now = new Date();
+
+    message.status = MessageStatus.SENT;
+    message.attempts += 1;
+    message.errorDetail = null;
+    message.lastAttemptAt = now;
+    message.sentAt = now;
+
+    return this.messageRepository.save(message);
+  }
+
+  async markAsFailed(message: Message, errorDetail: string) {
+    message.status = MessageStatus.FAILED;
+    message.attempts += 1;
+    message.errorDetail = errorDetail;
+    message.lastAttemptAt = new Date();
+
+    return this.messageRepository.save(message);
+  }
 }

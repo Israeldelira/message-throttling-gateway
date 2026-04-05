@@ -11,7 +11,7 @@ export class MessagesController {
   @ApiOperation({
     summary: 'Genera e inserta 100,000 mensajes de prueba',
     description:
-      'Automatiza la primera etapa de la prueba tecnica: crea 100,000 mensajes con status received y los inserta en la bd por lotes.',
+      'Genera e inserta 100,000 mensajes de prueba en la bd para simular la rafaga inicial desde Plataforma A.',
   })
   @ApiOkResponse({
     description:
