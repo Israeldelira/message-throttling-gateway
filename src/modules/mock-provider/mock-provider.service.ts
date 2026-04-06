@@ -1,7 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
+
+const MAX_MESSAGES_PER_SECOND = 100;
+const ONE_SECOND_WINDOW_MS = 1000;
 
 @Injectable()
 export class MockProviderService {
+  private windowStartedAt = Date.now();
+  private messagesInCurrentWindow = 0;
   private readonly receivedMessages: {
     messageId: number;
     recipient: string;
@@ -14,6 +19,8 @@ export class MockProviderService {
     recipient: string;
     content: string;
   }) {
+    this.validateRateLimit();
+
     const receivedAt = new Date().toISOString();
 
     this.receivedMessages.push({
@@ -26,5 +33,23 @@ export class MockProviderService {
       providerMessageId: `mock-${message.messageId}`,
       receivedAt,
     };
+  }
+
+  private validateRateLimit() {
+    const now = Date.now();
+
+    if (now - this.windowStartedAt >= ONE_SECOND_WINDOW_MS) {
+      this.windowStartedAt = now;
+      this.messagesInCurrentWindow = 0;
+    }
+
+    if (this.messagesInCurrentWindow >= MAX_MESSAGES_PER_SECOND) {
+      throw new HttpException(
+        'Mock provider rate limit exceeded',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    this.messagesInCurrentWindow += 1;
   }
 }

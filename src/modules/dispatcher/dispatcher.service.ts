@@ -1,9 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Message } from '../messages/entities/message.entity';
 import { MessagesService } from '../messages/messages.service';
-
-const MAX_MESSAGES_PER_SECOND = 100;
 
 @Injectable()
 export class DispatcherService {
@@ -15,74 +12,90 @@ export class DispatcherService {
   ) {}
 
   async dispatchMessages() {
+    const maxMessagesPerSecond = this.configService.get<number>(
+      'dispatcher.maxMessagesPerSecond',
+    )!;
+    const timeoutMs = this.configService.get<number>(
+      'dispatcher.requestTimeoutMs',
+    )!;
+    const port = this.configService.get<number>('port') ?? 3000;
+    const providerUrl = `http://localhost:${port}/mock-provider/messages`;
+    const delayBetweenMessagesMs = Math.ceil(1000 / maxMessagesPerSecond);
+
     if (this.isProcessing) {
       return {
         processed: 0,
         sent: 0,
-        failed: 0,
-        maxPerSecond: MAX_MESSAGES_PER_SECOND,
+        retrying: 0,
+        maxPerSec: maxMessagesPerSecond,
       };
     }
 
     this.isProcessing = true;
+    const stats = { processed: 0, sent: 0, retrying: 0 };
 
     try {
-      const messagesToSend = await this.messagesService.findMessagesToSend(
-        MAX_MESSAGES_PER_SECOND,
-      );
-      let sent = 0;
-      let failed = 0;
+      for (let position = 0; position < maxMessagesPerSecond; position++) {
+        if (position > 0) {
+          await new Promise((resolve) => {
+            setTimeout(resolve, delayBetweenMessagesMs);
+          });
+        }
 
-      for (const message of messagesToSend) {
+        const message = await this.messagesService.findNextMessageToProcess();
+        if (!message) break;
+
+        stats.processed++;
+
+        const abort = new AbortController();
+        const timeoutId = setTimeout(() => abort.abort(), timeoutMs);
+
         try {
-          await this.sendMessageToMockProvider(message);
+          const response = await fetch(providerUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              messageId: message.id,
+              recipient: message.recipient,
+              content: message.content,
+            }),
+            signal: abort.signal,
+          });
+
+          if (!response.ok) {
+            throw Object.assign(
+              new Error(
+                `Provider responded with status ${response.status}: ${await response.text()}`,
+              ),
+              { statusCode: response.status },
+            );
+          }
+
           await this.messagesService.markAsSent(message);
-          sent += 1;
+          stats.sent++;
         } catch (error) {
           console.error(`Error sending message ID ${message.id}:`, error);
-          const errorDetail =
-            error instanceof Error ? error.message : 'Unknown provider error';
 
-          await this.messagesService.markAsFailed(message, errorDetail);
-          failed += 1;
+          const detail =
+            error instanceof Error &&
+            (['AbortError', 'TimeoutError'].includes(error.name) ||
+              error.message.includes('timed out'))
+              ? `Provider request timed out after ${timeoutMs}ms`
+              : error instanceof Error
+                ? error.message
+                : 'Unknown provider error';
+
+          await this.messagesService.markAsRetrying(message, detail);
+          stats.retrying++;
+          break;
+        } finally {
+          clearTimeout(timeoutId);
         }
       }
-
-      return {
-        processed: messagesToSend.length,
-        sent,
-        failed,
-        maxPerSecond: MAX_MESSAGES_PER_SECOND,
-      };
     } finally {
       this.isProcessing = false;
     }
-  }
 
-  private async sendMessageToMockProvider(message: Message) {
-    const port = this.configService.get<number>('port') ?? 3000;
-    const mockProviderMessageUrl = `http://localhost:${port}/mock-provider/messages`;
-
-    const response = await fetch(mockProviderMessageUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        messageId: message.id,
-        recipient: message.recipient,
-        content: message.content,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorDetail = await response.text();
-
-      throw new Error(
-        `Provider C responded with status ${response.status}: ${errorDetail}`,
-      );
-    }
-
-    return response;
+    return { ...stats, maxPerSec: maxMessagesPerSecond };
   }
 }

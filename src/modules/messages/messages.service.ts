@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, IsNull, Repository } from 'typeorm';
 import { Message } from './entities/message.entity';
 import { MessageStatus } from './enums/message-status.enum';
 
@@ -64,11 +64,13 @@ export class MessagesService {
     }
   }
 
-  async findMessagesToSend(limit: number) {
-    return this.messageRepository.find({
-      where: { status: MessageStatus.RECEIVED },
+  async findNextMessageToProcess() {
+    return this.messageRepository.findOne({
+      where: [
+        { status: MessageStatus.RECEIVED, sentAt: IsNull() },
+        { status: MessageStatus.RETRYING, sentAt: IsNull() },
+      ],
       order: { id: 'ASC' },
-      take: limit,
     });
   }
 
@@ -77,18 +79,18 @@ export class MessagesService {
 
     message.status = MessageStatus.SENT;
     message.attempts += 1;
-    message.errorDetail = null;
     message.lastAttemptAt = now;
     message.sentAt = now;
 
     return this.messageRepository.save(message);
   }
 
-  async markAsFailed(message: Message, errorDetail: string) {
-    message.status = MessageStatus.FAILED;
+  async markAsRetrying(message: Message, errorDetail: string) {
+    message.status = MessageStatus.RETRYING;
     message.attempts += 1;
     message.errorDetail = errorDetail;
     message.lastAttemptAt = new Date();
+    message.sentAt = null;
 
     return this.messageRepository.save(message);
   }

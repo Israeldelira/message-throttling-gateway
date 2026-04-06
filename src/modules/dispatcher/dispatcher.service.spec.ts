@@ -15,7 +15,6 @@ describe('DispatcherService', () => {
           useValue: {
             findMessagesToSend: jest.fn(),
             markAsSent: jest.fn(),
-            markAsFailed: jest.fn(),
           },
         },
         {

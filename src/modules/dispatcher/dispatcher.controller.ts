@@ -11,15 +11,15 @@ export class DispatcherController {
   @ApiOperation({
     summary: 'Despacha manualmente mensajes al mock provider',
     description:
-      'Lee hasta 100 mensajes con status received en orden ascendente por id, los envia al mock de Plataforma C y actualiza el resultado a sent o failed.',
+      'Procesa mensajes en orden estricto por id. En cada ciclo envia un mensaje a la vez y, si ocurre cualquier error, lo deja en retry hasta que pueda enviarse correctamente.',
   })
   @ApiOkResponse({
     description: 'Resumen del procesamiento manual del lote solicitado.',
     schema: {
       example: {
-        processed: 100,
-        sent: 95,
-        failed: 5,
+        processed: 3,
+        sent: 2,
+        retrying: 1,
         maxPerSecond: 100,
       },
     },
