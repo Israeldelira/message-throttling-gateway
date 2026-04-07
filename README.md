@@ -82,21 +82,19 @@ DB_SYNCHRONIZE=true
 DB_LOGGING=false
 ```
 
-## Ejecutar
+## Ejecutar con Docker
 
-1. Crear una base MySQL llamada `message_db`.
-2. Ajusta el archivo `.env`.
-3. Instala dependencias:
+### Pasos
+1. Clona el repositorio y navega al directorio.
+2. Copia el archivo de ejemplo de variables de entorno:
+   ```bash
+   cp .env.example .env
+   ```
+3. Edita `.env` con tus configuraciones.
+4. Levanta la aplicación con Docker:
+   ```bash
+   npm run docker:up
+   ```
 
-```bash
-npm install
-```
-
-4. Levanta la app:
-
-```bash
-npm run start:dev
-```
-
-5. Abre Swagger en `http://localhost:3000/docs`.
+La app se ejecutará en `http://localhost:3002` y el mock-provider estará disponible en `http://localhost:3002/mock-provider/messages`.
 

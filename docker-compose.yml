@@ -1,0 +1,46 @@
+services:
+  mysql:
+    image: mysql:8.0
+    platform: linux/amd64
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: message_db
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    build:
+      context: .
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      MESSAGE_LIMIT: 100
+      DISPATCH_INTERVAL_MS: 1000
+      MOCK_PROVIDER_MAX_MESSAGES_PER_SECOND: 100
+      PROVIDER_REQUEST_TIMEOUT_MS: 5000
+      BATCH_PROCESS_DEFAULT_TOTAL_MESSAGES: 100000
+      BATCH_PROCESS_REQUEST_CONCURRENCY: 200
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USERNAME: root
+      DB_PASSWORD: root
+      DB_NAME: message_db
+      DB_SYNCHRONIZE: "true"
+      DB_LOGGING: "false"
+    ports:
+      - "3000:3000"
+
+volumes:
+  mysql_data:

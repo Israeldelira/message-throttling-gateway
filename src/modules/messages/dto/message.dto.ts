@@ -1,7 +1,13 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
-
-export const MAX_MESSAGES_PER_BATCH = 100_000;
+import { Type } from 'class-transformer';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+} from 'class-validator';
 
 export class CreateMessageDto {
   @ApiProperty({
@@ -30,6 +36,29 @@ export class CreateMessageDto {
   @IsString()
   @IsNotEmpty()
   content!: string;
+}
+
+export class MessageStatusQueryDto {
+  @ApiPropertyOptional({
+    example: 'msg-000001',
+    description:
+      'Consulta opcional por identificador externo enviado por Plataforma A.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  externalMessageId?: string;
+
+  @ApiPropertyOptional({
+    example: 1,
+    description:
+      'Consulta opcional por identificador interno generado por la base de datos.',
+  })
+  @Type(() => Number)
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  internalMessageId?: number;
 }
 
 export class UpdateMessageDto implements Partial<CreateMessageDto> {}
