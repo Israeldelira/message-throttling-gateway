@@ -1,66 +1,51 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, IsNull, Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { Message } from './entities/message.entity';
+import { CreateMessageDto } from './dto/message.dto';
 import { MessageStatus } from './enums/message-status.enum';
-
-const CHUNK_SIZE = 1000;
-const RECIPIENT_PHONE = '+521234000000';
 
 @Injectable()
 export class MessagesService {
   constructor(
     @InjectRepository(Message)
     private readonly messageRepository: Repository<Message>,
-    private readonly dataSource: DataSource,
   ) {}
 
-  //Metodo transaccional para asegurar la insersion total de los mensajes
-  async insertMessages(total: number) {
-    const queryRunner = this.dataSource.createQueryRunner();
+  async acceptMessage(createMessageDto: CreateMessageDto) {
+    const existingMessage = await this.messageRepository.findOne({
+      where: { externalMessageId: createMessageDto.externalMessageId },
+    });
 
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
+    if (existingMessage) {
+      console.log(
+        `Duplicate message ignored for externalMessageId "${createMessageDto.externalMessageId}"`,
+      );
+      return existingMessage;
+    }
+
+    const message = this.messageRepository.create({
+      externalMessageId: createMessageDto.externalMessageId,
+      recipient: createMessageDto.recipient,
+      content: createMessageDto.content,
+      status: MessageStatus.RECEIVED,
+    });
 
     try {
-      let inserted = 0;
+      return await this.messageRepository.save(message);
+    } catch (error) {
+      const duplicatedMessage = await this.messageRepository.findOne({
+        where: { externalMessageId: createMessageDto.externalMessageId },
+      });
 
-      for (let start = 0; start < total; start += CHUNK_SIZE) {
-        const batchSize = CHUNK_SIZE;
-
-        const chunk: {
-          recipient: string;
-          content: string;
-          status: MessageStatus;
-        }[] = [];
-
-        for (let i = 0; i < batchSize; i++) {
-          chunk.push({
-            recipient: RECIPIENT_PHONE,
-            content: `Test message number ${start + i + 1}`,
-            status: MessageStatus.RECEIVED,
-          });
-        }
-
-        await queryRunner.manager
-          .createQueryBuilder()
-          .insert()
-          .into(Message)
-          .values(chunk)
-          .execute();
-
-        inserted += batchSize;
+      if (!duplicatedMessage) {
+        throw error;
       }
 
-      await queryRunner.commitTransaction();
-
-      return { total, inserted };
-    } catch (error) {
-      console.error('Error inserting messages:', error);
-      await queryRunner.rollbackTransaction();
-      throw error;
-    } finally {
-      await queryRunner.release();
+      console.log(
+        `Duplicate message ignored for externalMessageId "${createMessageDto.externalMessageId}"`,
+      );
+      return duplicatedMessage;
     }
   }
 

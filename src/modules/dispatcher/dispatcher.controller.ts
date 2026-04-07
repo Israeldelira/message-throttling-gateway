@@ -20,7 +20,8 @@ export class DispatcherController {
         processed: 3,
         sent: 2,
         retrying: 1,
-        maxPerSecond: 100,
+        messageLimit: 100,
+        intervalMs: 1000,
       },
     },
   })
