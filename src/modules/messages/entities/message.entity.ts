@@ -6,6 +6,15 @@ export class Message {
   @PrimaryGeneratedColumn({ type: 'int', unsigned: true })
   id!: number;
 
+  @Column({
+    name: 'external_message_id',
+    type: 'varchar',
+    length: 20,
+    unique: true,
+    nullable: true,
+  })
+  externalMessageId!: string | null;
+
   @Column({ type: 'varchar', length: 255 })
   recipient!: string;
 

@@ -12,8 +12,9 @@ export class DispatcherScheduler implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit() {
-    const dispatchIntervalMs =
-      this.configService.get<number>('dispatcher.intervalMs') ?? 1000;
+    const dispatchIntervalMs = this.configService.get<number>(
+      'dispatcher.intervalMs',
+    );
     this.intervalId = setInterval(() => {
       console.log('Running scheduled message dispatch...');
       void this.dispatcherService.dispatchMessages();

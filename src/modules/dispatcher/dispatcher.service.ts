@@ -12,34 +12,39 @@ export class DispatcherService {
   ) {}
 
   async dispatchMessages() {
-    const maxMessagesPerSecond = this.configService.get<number>(
-      'dispatcher.maxMessagesPerSecond',
-    )!;
+    const messageLimit = this.configService.get<number>('messageLimit')!;
+    const intervalMs = this.configService.get<number>('dispatcher.intervalMs')!;
     const timeoutMs = this.configService.get<number>(
       'dispatcher.requestTimeoutMs',
     )!;
-    const port = this.configService.get<number>('port') ?? 3000;
+    const port = this.configService.get<number>('port')!;
     const providerUrl = `http://localhost:${port}/mock-provider/messages`;
-    const delayBetweenMessagesMs = Math.ceil(1000 / maxMessagesPerSecond);
+    const delayBetweenMessagesMs = Math.ceil(intervalMs / messageLimit);
 
     if (this.isProcessing) {
       return {
         processed: 0,
         sent: 0,
         retrying: 0,
-        maxPerSec: maxMessagesPerSecond,
+        messageLimit,
+        intervalMs,
       };
     }
 
     this.isProcessing = true;
     const stats = { processed: 0, sent: 0, retrying: 0 };
+    const cycleStartedAt = Date.now();
 
     try {
-      for (let position = 0; position < maxMessagesPerSecond; position++) {
-        if (position > 0) {
+      while (Date.now() - cycleStartedAt < intervalMs) {
+        if (stats.processed > 0) {
           await new Promise((resolve) => {
             setTimeout(resolve, delayBetweenMessagesMs);
           });
+        }
+
+        if (Date.now() - cycleStartedAt >= intervalMs) {
+          break;
         }
 
         const message = await this.messagesService.findNextMessageToProcess();
@@ -76,16 +81,16 @@ export class DispatcherService {
         } catch (error) {
           console.error(`Error sending message ID ${message.id}:`, error);
 
-          const detail =
-            error instanceof Error &&
-            (['AbortError', 'TimeoutError'].includes(error.name) ||
-              error.message.includes('timed out'))
-              ? `Provider request timed out after ${timeoutMs}ms`
-              : error instanceof Error
-                ? error.message
-                : 'Unknown provider error';
+          if ((error as { statusCode?: number })?.statusCode === 429) {
+            console.warn(
+              `Provider rate limit exceeded. Message ID ${message.id} remains pending for retry.`,
+            );
+          }
 
-          await this.messagesService.markAsRetrying(message, detail);
+          await this.messagesService.markAsRetrying(
+            message,
+            'Provider request failed',
+          );
           stats.retrying++;
           break;
         } finally {
@@ -96,6 +101,6 @@ export class DispatcherService {
       this.isProcessing = false;
     }
 
-    return { ...stats, maxPerSec: maxMessagesPerSecond };
+    return { ...stats, messageLimit, intervalMs };
   }
 }

@@ -1,66 +1,55 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, IsNull, Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
+import { CreateMessageDto, MessageStatusQueryDto } from './dto/message.dto';
 import { Message } from './entities/message.entity';
 import { MessageStatus } from './enums/message-status.enum';
-
-const CHUNK_SIZE = 1000;
-const RECIPIENT_PHONE = '+521234000000';
 
 @Injectable()
 export class MessagesService {
   constructor(
     @InjectRepository(Message)
     private readonly messageRepository: Repository<Message>,
-    private readonly dataSource: DataSource,
   ) {}
 
-  //Metodo transaccional para asegurar la insersion total de los mensajes
-  async insertMessages(total: number) {
-    const queryRunner = this.dataSource.createQueryRunner();
+  async acceptMessage(createMessageDto: CreateMessageDto) {
+    const existingMessage = await this.messageRepository.findOne({
+      where: { externalMessageId: createMessageDto.externalMessageId },
+    });
 
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
+    if (existingMessage) {
+      console.log(
+        `Duplicate message ignored for externalMessageId "${createMessageDto.externalMessageId}"`,
+      );
+      return existingMessage;
+    }
+
+    const message = this.messageRepository.create({
+      externalMessageId: createMessageDto.externalMessageId,
+      recipient: createMessageDto.recipient,
+      content: createMessageDto.content,
+      status: MessageStatus.RECEIVED,
+    });
 
     try {
-      let inserted = 0;
+      return await this.messageRepository.save(message);
+    } catch (error) {
+      const duplicatedMessage = await this.messageRepository.findOne({
+        where: { externalMessageId: createMessageDto.externalMessageId },
+      });
 
-      for (let start = 0; start < total; start += CHUNK_SIZE) {
-        const batchSize = CHUNK_SIZE;
-
-        const chunk: {
-          recipient: string;
-          content: string;
-          status: MessageStatus;
-        }[] = [];
-
-        for (let i = 0; i < batchSize; i++) {
-          chunk.push({
-            recipient: RECIPIENT_PHONE,
-            content: `Test message number ${start + i + 1}`,
-            status: MessageStatus.RECEIVED,
-          });
-        }
-
-        await queryRunner.manager
-          .createQueryBuilder()
-          .insert()
-          .into(Message)
-          .values(chunk)
-          .execute();
-
-        inserted += batchSize;
+      if (!duplicatedMessage) {
+        throw error;
       }
 
-      await queryRunner.commitTransaction();
-
-      return { total, inserted };
-    } catch (error) {
-      console.error('Error inserting messages:', error);
-      await queryRunner.rollbackTransaction();
-      throw error;
-    } finally {
-      await queryRunner.release();
+      console.log(
+        `Duplicate message ignored for externalMessageId "${createMessageDto.externalMessageId}"`,
+      );
+      return duplicatedMessage;
     }
   }
 
@@ -93,5 +82,70 @@ export class MessagesService {
     message.sentAt = null;
 
     return this.messageRepository.save(message);
+  }
+
+  async getStatusOverview(query: MessageStatusQueryDto) {
+    if (query.externalMessageId && query.internalMessageId) {
+      throw new BadRequestException(
+        'Use internalMessageId or externalMessageId, but not both at the same time.',
+      );
+    }
+
+    const [total, received, retrying, sent, failed] = await Promise.all([
+      this.messageRepository.count(),
+      this.messageRepository.countBy({ status: MessageStatus.RECEIVED }),
+      this.messageRepository.countBy({ status: MessageStatus.RETRYING }),
+      this.messageRepository.countBy({ status: MessageStatus.SENT }),
+      this.messageRepository.countBy({ status: MessageStatus.FAILED }),
+    ]);
+
+    const response = {
+      metrics: {
+        total,
+        queueDepth: received + retrying,
+        received,
+        retrying,
+        sent,
+        failed,
+      },
+    };
+
+    if (!query.externalMessageId && !query.internalMessageId) {
+      return response;
+    }
+
+    const message = await this.findOneForStatus(query);
+
+    if (!message) {
+      throw new NotFoundException('Message not found.');
+    }
+
+    return {
+      ...response,
+      message: {
+        internalMessageId: message.id,
+        externalMessageId: message.externalMessageId,
+        recipient: message.recipient,
+        status: message.status,
+        attempts: message.attempts,
+        errorDetail: message.errorDetail,
+        receivedAt: message.receivedAt,
+        lastAttemptAt: message.lastAttemptAt,
+        sentAt: message.sentAt,
+        updatedAt: message.updatedAt,
+      },
+    };
+  }
+
+  private findOneForStatus(query: MessageStatusQueryDto) {
+    if (query.internalMessageId) {
+      return this.messageRepository.findOne({
+        where: { id: query.internalMessageId },
+      });
+    }
+
+    return this.messageRepository.findOne({
+      where: { externalMessageId: query.externalMessageId },
+    });
   }
 }

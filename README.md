@@ -1,98 +1,100 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Message Throttling Gateway
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Servicio en NestJS para recibir una rafaga de mensajes, persistirlos en MySQL y despacharlos hacia un proveedor que solo acepta `100` mensajes por segundo simulando la siguiente situacion
+Endpoint que simula rafaga de mensajes -> Representa **Plataforma A**
+modulo message -> Representa sistma receptor y procesador **Componente B**
+mock-provider -> Provedor de mensajeria **Plataforma C**
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+# Explicacion de solucion
 
-## Description
+## Arquitectura
+- Cliente servidor para trabajar por medio de peticiones de forma simple y asincrona
+- Estructura modular orientada a responsabilidades 
+- Desacoplada cada quien tiene sus funciones y tareas 
+- Persistencia con base de datos
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Por que NestJS?
+- Tipado que ofrece con typescript
+- Estructura rapida y limpia
+- Herramientas utiles como schedule para los jobs, class-validator y typeorm
+- Experiencia con este framework
 
-## Project setup
+## Por que MySQL?
+- Base de datos enfocada a la persistencia enfocado principalmente para la prueba
+- Soporta fallos y interrupciones
+- Mejor para trazabilidad enfocado en la prueba como se indica
+- Mayor experiencia y simplicidad para mi 
 
-```bash
-$ npm install
+A diferencia de redis o memoria deci implementarlo porque tengo experiencia, es mejor para los casos plasmados en la porueba que es la trazabildiad, la seguirdad de el envio de mensajes en su totalidad y la simplicidad aunque la mejor opcion que considero con mas tiempo es implementar ambas redis para toda la gestion de colas, rate limiting y orden estricto y mysql para la persistencia y trazabilidad para ser la fuente de verdad  
+
+## Solucion de requerimientos
+  ### Throttling
+  Para el Throttling se implemento un dispatcher que se ejecuta cada segundo, limite de 100 mensajes y el limite de mensajes que se le envian al provedor los cuales se definen con variables de entorno 
+- **DISPATCH_INTERVAL_MS**: Para ejecucion del dispatcher (job)
+- **MESSAGE_LIMIT**: Limite de mensajes que que puede procesar el dispatcher
+- **MOCK_PROVIDER_MAX_MESSAGES_PER_SECOND**: Limite de mensajes que puede recibir el provedor
+  Con estos variables de entorno podemos jugar para generar el error de rate limit 
+  Existe una limitacion para esta implementacion es de que si se cae el servidor el rate limit se reinicia no sobrevive de esta forma ya que vive en memoria del proceso
+ ### Ejecucion en colas
+ Me apoye con el id de myslq como es secuencial y autoncrementable entonces con mi dispatcher ejecuto periodicmaente reviso esta parte y dependiendo del estatus es como lo gestiono
+ ### Garantia de entrega 
+ Con la base de datos y los mensajes persistentes ahi puedo continuar donde el flkujo se quedo y continuar el envio para asegurarme que pas elo que pase estos se envien por medio del estatus continuar donde me quede 
+### Idempotencia
+  Se implemento el campo externalMessageId para evitar la repeticion asi con esto se evalua ese identificador antes de procesar es emensaje asi se evita una insercion en la base de datos y que se envie el mensaje (cambiar el status a sent)
+    
+# Preguntas 
+## Throttling
+- ¿Qué pasa si C responde con error de rate limit? ¿Cómo reaccionas? Por el momento  solo actualizo el estatus del mensaje paa que uvelva a reintentarlo con retrying y simplmente ignoro y continuo trabajando hasta que ese estatus cambie a sent admas imprimo log del error
+- ¿Cómo distribuyes los envíos a lo largo del tiempo de forma eficiente? Gestiono los mnesajes por medio de un dispatcher  usando ventanas de tiempo de forma secuencial termina la ventana y en la siguiente ventana continuo donde se quedo la anterior ventana de tiempo 
+
+## Entrega garantizada
+Mediante la persistencia de mysql se gestiona que todos los mensajes sean entregados y en orden gracias a su id ASC ademas al guardar los estatus se determina con cual continiar y en caso de que falle o cualquier problema continua con el ultimo con ese estatus
+
+## Flujo
+
+1. Plataforma A envia `POST /messages`.
+2. El mensaje se guarda primero en MySQL.
+3. El scheduler corre cada `1` segundo.
+4. El dispatcher toma mensajes pendientes por `id ASC`.
+5. El dispatcher intenta enviarlos al provider mock.
+6. Si el envio sale bien, el mensaje queda en `sent`.
+7. Si falla, el mensaje queda en `retrying` y se vuelve a intentar en el siguiente ciclo.
+
+## Variables de entorno
+
+Configura todas estas variables en tu `.env`:
+
+```env
+NODE_ENV=development
+PORT=3002
+MESSAGE_LIMIT=100
+DISPATCH_INTERVAL_MS=1000
+DISPATCH_MAX_MESSAGES_PER_SECOND=100
+PROVIDER_REQUEST_TIMEOUT_MS=5000
+BATCH_PROCESS_DEFAULT_TOTAL_MESSAGES=100000
+BATCH_PROCESS_REQUEST_CONCURRENCY=200
+DB_HOST=localhost
+DB_PORT=3306
+DB_USERNAME=root
+DB_PASSWORD=tu_password
+DB_NAME=message_db
+DB_SYNCHRONIZE=true
+DB_LOGGING=false
 ```
 
-## Compile and run the project
+## Ejecutar con Docker
 
-```bash
-# development
-$ npm run start
+### Pasos
+1. Clona el repositorio y navega al directorio.
+2. Copia el archivo de ejemplo de variables de entorno:
+   ```bash
+   cp .env.example .env
+   ```
+3. Edita `.env` con tus configuraciones.
+4. Levanta la aplicación con Docker:
+   ```bash
+   npm run docker:up
+   ```
 
-# watch mode
-$ npm run start:dev
+La app se ejecutará en `http://localhost:3002` y el mock-provider estará disponible en `http://localhost:3002/mock-provider/messages`.
 
-# production mode
-$ npm run start:prod
-```
-
-## Run tests
-
-```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
-```
-
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).

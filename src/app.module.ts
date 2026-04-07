@@ -3,8 +3,6 @@ import { ConfigService } from '@nestjs/config';
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
 import { appConfig } from './config/app.config';
 import { databaseConfig, getTypeOrmConfig } from './config/database.config';
 import { DispatcherModule } from './modules/dispatcher/dispatcher.module';
@@ -26,7 +24,5 @@ import { MockProviderModule } from './modules/mock-provider/mock-provider.module
     DispatcherModule,
     MockProviderModule,
   ],
-  controllers: [AppController],
-  providers: [AppService],
 })
 export class AppModule {}
